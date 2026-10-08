@@ -1,0 +1,82 @@
+[
+  {
+    "id": "inc-001",
+    "title": "Payment Service 504 Gateway Timeout",
+    "content": "The payment service began returning 504 Gateway Timeout errors during peak traffic between 2 PM and 4 PM. Root cause: the connection pool to the downstream payment gateway was exhausted because connections were not being released after failed requests. Fix: added a timeout and explicit connection release in the finally block, and increased the pool size from 10 to 25. Monitoring: watch the 'active_connections' metric in Dynatrace; alert if it exceeds 80% of pool size for more than 2 minutes."
+  },
+  {
+    "id": "inc-002",
+    "title": "Database Connection Pool Exhaustion",
+    "content": "Application became unresponsive with 'connection timeout' errors in logs. Root cause: a long-running report query held a connection open for over 10 minutes, blocking other requests from acquiring a connection. Fix: added a query timeout of 30 seconds and moved the report generation to an async background job. Prevention: set max connection lifetime and enable slow query logging."
+  },
+  {
+    "id": "inc-003",
+    "title": "Memory Leak in Session Cache",
+    "content": "Application memory usage grew steadily over 48 hours until the service crashed with an OutOfMemoryError. Root cause: session objects were added to an in-memory cache on login but never removed on logout or expiry. Fix: added a TTL-based eviction policy (30 minutes) and explicit cache removal on logout. Detection: use CloudWatch memory utilization graphs; a steady upward slope over days, not spikes, indicates a leak rather than a traffic surge."
+  },
+  {
+    "id": "inc-004",
+    "title": "API Authentication Failures After Token Rotation",
+    "content": "Users were logged out unexpectedly and API calls returned 401 Unauthorized after a scheduled JWT signing key rotation. Root cause: the API gateway cached the old public key and didn't refresh it, so it rejected tokens signed with the new key. Fix: reduced the gateway's key cache TTL to 5 minutes and added a manual cache-invalidation endpoint for emergency rotations. Prevention: always support both old and new signing keys for a grace period during rotation."
+  },
+  {
+    "id": "inc-005",
+    "title": "Disk Space Exhaustion on Application Server",
+    "content": "Application started throwing 'No space left on device' errors when writing temporary files. Root cause: application logs were not being rotated, and a debug logging flag left on in production generated several GB per day. Fix: enabled log rotation with a 7-day retention policy and turned off debug logging. Monitoring: alert when disk usage exceeds 80%, not 95%, to leave time to react."
+  },
+  {
+    "id": "inc-006",
+    "title": "Redis Cache Stampede During Deployment",
+    "content": "After a deployment, response times spiked sharply because the cache was cleared and every request hit the database simultaneously to rebuild the same cache entries. Root cause: no protection against concurrent cache misses for the same key (cache stampede). Fix: added a lock so only one request rebuilds a given cache key while others wait briefly, and pre-warmed the most common cache keys right after deployment. Prevention: stagger cache invalidation instead of clearing it all at once."
+  },
+  {
+    "id": "inc-007",
+    "title": "Message Queue Backlog in Order Processing",
+    "content": "Orders were being accepted but not processed, and the Kafka consumer lag grew to over 50,000 messages. Root cause: a downstream inventory service started responding slowly, and the consumer had no timeout, so it blocked on every message. Fix: added a per-message timeout and moved failed messages to a dead-letter queue for retry instead of blocking the whole consumer. Monitoring: alert on consumer lag exceeding 1,000 messages for more than 5 minutes."
+  },
+  {
+    "id": "inc-008",
+    "title": "Guidewire Policy Center Data Sync Failure",
+    "content": "Policy updates made in the UI were not reflected in downstream reporting systems. Root cause: a Gosu batch script that syncs policy data failed silently due to an unhandled null reference when a policy had no associated billing account. Fix: added null checks and explicit error logging in the Gosu script, and set up an alert on script failure exit codes. Prevention: add unit tests for edge cases like missing related records before deploying batch scripts."
+  },
+  {
+    "id": "inc-009",
+    "title": "Intermittent 503 Errors from Load Balancer",
+    "content": "Random 503 Service Unavailable errors appeared under normal traffic, affecting about 2% of requests. Root cause: one instance behind the load balancer was failing health checks intermittently due to a slow garbage collection pause, but was not being removed from rotation quickly enough. Fix: tightened health check thresholds (2 consecutive failures instead of 5) and tuned JVM garbage collection settings to reduce pause times. Monitoring: track p99 GC pause time alongside error rate."
+  },
+  {
+    "id": "inc-010",
+    "title": "CORS Errors After Frontend Deployment",
+    "content": "Users reported the web app failing to load data, with 'blocked by CORS policy' errors in the browser console. Root cause: a new frontend domain was deployed but not added to the backend's allowed origins list. Fix: added the new domain to the CORS configuration and added a deployment checklist item to update it for any new frontend environment. Debugging tip: CORS errors appear in the browser console, not in backend logs, so always check DevTools first."
+  },
+  {
+    "id": "inc-011",
+    "title": "Duplicate Order Creation Under Retry Logic",
+    "content": "Customers were occasionally charged twice for the same order. Root cause: the frontend retried a POST request on timeout, but the request had actually succeeded server-side; the retry created a second order because the endpoint was not idempotent. Fix: added an idempotency key generated by the client and stored server-side to detect and reject duplicate submissions. Prevention: any POST endpoint that creates a financial record should be idempotent by design."
+  },
+  {
+    "id": "inc-012",
+    "title": "SonarQube Quality Gate Blocking Critical Hotfix",
+    "content": "A critical production hotfix was blocked from deployment because it failed the SonarQube quality gate due to unrelated pre-existing code smells in the same file. Fix: configured the quality gate to evaluate only newly added or modified lines ('new code' condition) rather than the whole file. Prevention: agree on a documented emergency override process for hotfixes, requiring a follow-up ticket to address any skipped issues."
+  },
+  {
+    "id": "inc-013",
+    "title": "AWS Lambda Cold Start Latency Spike",
+    "content": "API responses served through Lambda occasionally took 4-6 seconds instead of the usual 200ms. Root cause: cold starts, where Lambda has to initialize a new execution environment after a period of low traffic. Fix: enabled provisioned concurrency for the most-used endpoints during business hours. Monitoring: track the 'init duration' metric in CloudWatch separately from execution duration to distinguish cold starts from real slowdowns."
+  },
+  {
+    "id": "inc-014",
+    "title": "DynamoDB Throttling During Batch Import",
+    "content": "A nightly batch job to import customer data started failing with ProvisionedThroughputExceededException errors. Root cause: the batch job wrote items faster than the table's provisioned write capacity, and it had no backoff or retry logic. Fix: switched the table to on-demand capacity mode and added exponential backoff retry logic in the batch job. Prevention: load-test batch jobs against realistic data volumes before scheduling them in production."
+  },
+  {
+    "id": "inc-015",
+    "title": "Expired SSL Certificate Causing Outage",
+    "content": "The API became completely unreachable, with clients reporting SSL handshake failures. Root cause: the SSL certificate expired and there was no automated renewal or expiry alert in place. Fix: renewed the certificate immediately and set up automated renewal, plus an alert 30 days before any certificate's expiry date. This is one of the most common and most preventable causes of full outages."
+  },
+  {
+    "id": "inc-016",
+    "title": "Jenkins Pipeline Failing After Dependency Update",
+    "content": "The CI/CD pipeline started failing at the build step after a routine npm dependency update. Root cause: a transitive dependency introduced a breaking change, and there was no lock file committed, so different builds could pull different versions. Fix: committed the package-lock.json file and pinned the problematic dependency to a known-good version. Prevention: always commit lock files and review dependency update PRs before merging to main."
+  }
+]
